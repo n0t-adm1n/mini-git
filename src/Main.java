@@ -13,27 +13,46 @@ import java.util.zip.DeflaterOutputStream;
 
 public class Main {
     static void main(String[] args) {
-        String command = args[0];
-        String filename = "";
-        if(args.length >= 2) {
-            if(args[1].equals("-w")) {
-                if(args.length > 2) filename = args[2];
-            } else {
-                filename = args[1];
-            }
+        if(args.length == 0) {
+            System.out.println("Usage: java Main <command> [<args>]");
+            return;
         }
+
+        String command = args[0];
+
         switch (command) {
             case "init" :
                 initializeRepository();
                 break;
+
+
             case "hash-object" :
+
+                boolean writeFlag = false;
+                String filename = "";
+
+                for(int i = 1; i < args.length; i++) {
+                    if(args[i].equals("-w")) {
+                        writeFlag = true;
+                    } else {
+                        filename = args[i];
+                    }
+                }
+
                 if(filename.isEmpty()) {
                     System.out.println("please enter a file name");
                     break;
                 }
 
-                writeToDisk(filename);
+                if(writeFlag) {
+                    writeToDisk(filename);
+                } else {
+                    byte[] blob = createBlob(filename);
+                    System.out.println(generateHexString(blob));
+                }
                 break;
+
+
             default:
                 System.out.println(command + "is not a valid command");
                 break;
@@ -88,7 +107,7 @@ public class Main {
                 dos.write(blob);
 
             }
-            System.out.println("Successfully wrote the object to" + objectPath);
+            System.out.println("Successfully wrote the object to " + objectPath);
 
         } catch (IOException e) {
             System.out.println(e.getMessage());
