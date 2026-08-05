@@ -1,15 +1,17 @@
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.zip.DeflaterOutputStream;
+import java.util.zip.InflaterInputStream;
 
 public class Main {
     static void main(String[] args) {
@@ -51,6 +53,35 @@ public class Main {
                     System.out.println(generateHexString(blob));
                 }
                 break;
+
+
+            case "cat-file" :
+
+                boolean printFlag = false;
+                String hash = "";
+
+                for(int i = 1; i < args.length; i++) {
+                    if(args[i].equals("-p")) {
+                        printFlag = true;
+                    } else {
+                        hash = args[i];
+                    }
+                }
+
+                if(hash.isEmpty()) {
+                    System.out.println("Please provide a hash to read");
+                    break;
+                }
+
+                if(printFlag) {
+                    // print the content of the file on console
+                    catFile(hash);
+                } else {
+                    System.out.println("provide the -p flag");
+                }
+
+                break;
+
 
 
             default:
@@ -149,5 +180,37 @@ public class Main {
         }
 
         return hexString;
+    }
+
+    public static void catFile(String hash) {
+        String dirname  = hash.substring(0,2);
+        String filename = hash.substring(2);
+
+        Path objectPath = Paths.get(".minigit", "objects", dirname, filename);
+
+        try(
+                FileInputStream fis = new FileInputStream(objectPath.toFile());
+                InflaterInputStream iis = new InflaterInputStream(fis);
+        ) {
+
+            byte[] data = iis.readAllBytes();
+            int i = 0;
+
+            // skip till the null char in header of blob
+            while(data[i] != 0) {
+                i++;
+            }
+            // currently i has the null byte index
+
+            // only keep the byte after the header and the null char
+            data = Arrays.copyOfRange(data, i+1, data.length);
+            String res = new String(data);
+
+            // print the content of the file to console
+            System.out.print(res);
+
+        } catch (IOException e) {
+            System.out.println("error while reading file " + e.getMessage());
+        }
     }
 }
