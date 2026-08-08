@@ -1,15 +1,12 @@
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
-import java.util.HexFormat;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Stream;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
 
@@ -50,7 +47,12 @@ public class Main {
                     writeToDisk(filename);
                 } else {
                     byte[] blob = createBlob(filename);
-                    System.out.println(generateHexString(blob));
+                    try {
+                        String hexString = generateHexString(blob);
+                        System.out.println(hexString);
+                    } catch(NullPointerException e) {
+                        System.out.println("cannot generate hex string. " + e.getMessage());
+                    }
                 }
                 break;
 
@@ -82,10 +84,16 @@ public class Main {
 
                 break;
 
+            case "write-tree" :
+                Set<String> ignoreSet = getIgnoreSet();
+                Path root = Paths.get("");
+                String treeHash = writeTree(ignoreSet, root);
+                System.out.println(treeHash);
 
+                break;
 
             default:
-                System.out.println(command + "is not a valid command");
+                System.out.println(command + " is not a valid command");
                 break;
         }
     }
@@ -124,29 +132,11 @@ public class Main {
         byte[] blob = createBlob(filename);
         String hexString = generateHexString(blob);
 
-        String folderName = hexString.substring(0, 2);
-        String fileName   = hexString.substring(2, 40);
-
-        Path objectPath = Paths.get(".minigit", "objects", folderName, fileName);
-
-        try {
-            Files.createDirectories(objectPath.getParent());
-
-            try(FileOutputStream fos = new FileOutputStream(objectPath.toFile());
-                DeflaterOutputStream dos = new DeflaterOutputStream(fos)) {
-
-                dos.write(blob);
-
-            }
-            System.out.println("Successfully wrote the object to " + objectPath);
-
-        } catch (IOException e) {
-            System.out.println(e.getMessage());
-        }
+        saveGitObjectToDisk(hexString, blob);
     }
 
     public static byte[] createBlob(String filename) {
-        Path filePath = Paths.get("src/" + filename);
+        Path filePath = Paths.get(filename);
 
         byte[] blob = null;
         try {
@@ -167,6 +157,11 @@ public class Main {
     }
 
     public static String generateHexString(byte[] blob) {
+
+        if(blob == null) {
+            throw new NullPointerException("blob is null. error creating blob");
+        }
+
         String hexString = null;
 
         try {
@@ -180,6 +175,27 @@ public class Main {
         }
 
         return hexString;
+    }
+
+    public static void saveGitObjectToDisk(String hexString, byte[] rawData) {
+        String folderName = hexString.substring(0, 2);
+        String fileName   = hexString.substring(2, 40);
+
+        Path objectPath = Paths.get(".minigit", "objects", folderName, fileName);
+
+        try {
+            Files.createDirectories(objectPath.getParent());
+
+            try(FileOutputStream fos = new FileOutputStream(objectPath.toFile());
+                DeflaterOutputStream dos = new DeflaterOutputStream(fos)) {
+
+                dos.write(rawData);
+
+            }
+
+        } catch (IOException e) {
+            System.out.println("Error saving to disk. " + e.getMessage());
+        }
     }
 
     public static void catFile(String hash) {
@@ -212,5 +228,127 @@ public class Main {
         } catch (IOException e) {
             System.out.println("error while reading file " + e.getMessage());
         }
+    }
+
+    public static String writeTree(Set<String> ignoreSet, Path path ) {
+
+        List<byte[]> treeEntries = new ArrayList<>();
+
+        try (
+                Stream<Path> stream = Files.list(path);
+        ){
+
+            List<Path> paths = stream.toList();
+            Collections.sort(paths);
+
+            for(Path p : paths) {
+                String filename = p.getFileName().toString();
+                if(!ignoreSet.contains(filename) && !filename.equals(".minigit")) {
+                    // handle if a path points to a file or dir
+                    if(Files.isRegularFile(p)) {
+
+
+
+                        String mode = "100644 ";
+
+                        String header = mode + filename + '\0';
+
+                        byte[] blob = createBlob(p.toString());
+                        String blobHash = generateHexString(blob);
+
+                        saveGitObjectToDisk(blobHash, blob);
+
+                        byte[] fileHashByte = HexFormat.of().parseHex(blobHash);
+
+                        try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                            baos.write(header.getBytes());
+                            baos.write(fileHashByte);
+
+                            treeEntries.add(baos.toByteArray());
+                        } catch(IOException e) {
+                            System.out.println("Error combining header with blob. " + e.getMessage());
+                        }
+
+                    } else if(Files.isDirectory(p)) {
+
+                        String subDirHash = writeTree(ignoreSet, p);
+
+                        if(subDirHash != null) {
+
+                            String mode = "40000 ";
+                            String header = mode + filename + '\0';
+
+                            byte[] subDirHashBytes = HexFormat.of().parseHex(subDirHash);
+                            try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                                baos.write(header.getBytes(StandardCharsets.UTF_8));
+                                baos.write(subDirHashBytes);
+
+                                treeEntries.add(baos.toByteArray());
+                            }
+
+                        }
+
+                    } else {
+
+                        System.out.println(p + " is something else");
+
+                    }
+                }
+            }
+
+            // combining all the treeEntries
+            byte[] combinedTreeEntries;
+            try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                for(byte[] b : treeEntries) {
+                    baos.write(b);
+                }
+
+                combinedTreeEntries = baos.toByteArray();
+            }
+
+            // create tree header and final object containing all the files
+            String treeHeader = "tree " + combinedTreeEntries.length + "\0";
+
+            byte[] finalTreeObject;
+            try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                baos.write(treeHeader.getBytes(StandardCharsets.UTF_8));
+                baos.write(combinedTreeEntries);
+
+                finalTreeObject = baos.toByteArray();
+            }
+
+            String treeHex = generateHexString(finalTreeObject);
+            saveGitObjectToDisk(treeHex, finalTreeObject);
+
+            return treeHex;
+        } catch (IOException e) {
+            System.out.println("Error occurred while writing tree: " + e.getMessage());
+        }
+
+
+        return null;
+    }
+
+    public static Set<String> getIgnoreSet() {
+        Set<String> set = new HashSet<>();
+
+        Path ignoreFile = Paths.get(".mini-gitignore");
+
+        try( Stream<String> dirAndFilesToIgnoreStream = Files.lines(ignoreFile);) {
+            for(String s : dirAndFilesToIgnoreStream.toList()) {
+                String st = s.trim();
+
+                if(st.isEmpty()) continue;
+
+                // remove the / from the dir names
+                if(st.endsWith("/")) st = st.substring(0, st.length()-1);
+
+                set.add(st);
+            }
+        } catch (IOException e) {
+            System.out.println("cannot read .mini-gitignore file " + e.getMessage());
+        }
+
+        return set;
     }
 }
