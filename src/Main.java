@@ -238,8 +238,8 @@ public class Main {
                 Stream<Path> stream = Files.list(path);
         ){
 
-            List<Path> paths = stream.toList();
-            Collections.sort(paths);
+            List<Path> paths = stream.sorted().toList();
+
 
             for(Path p : paths) {
                 String filename = p.getFileName().toString();
