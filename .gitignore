@@ -29,6 +29,5 @@ bin/
 ### Mac OS ###
 .DS_Store
 
-.minigit/
 .idea/
 .minigit/
