@@ -243,7 +243,7 @@ public class Main {
 
             for(Path p : paths) {
                 String filename = p.getFileName().toString();
-                if(!ignoreSet.contains(filename) && !filename.equals(".minigit")) {
+                if(!ignoreSet.contains(filename) && !filename.equals(".minigit") && !filename.equals(".git") ) {
                     // handle if a path points to a file or dir
                     if(Files.isRegularFile(p)) {
 
