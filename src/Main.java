@@ -88,6 +88,37 @@ public class Main {
                 System.out.println(treeHash); // Output the final hash exactly like real Git
                 break;
 
+            case "commit-tree" :
+
+                if(args.length < 4) {
+                    System.out.println("Usage: commit-tree <tree-hash> -m <message> [-p <parent-hash>]");
+                    break;
+                }
+
+
+                String treeHash1 = args[1];
+                String message = null;
+                String parentHash = null;
+
+                for(int i = 1; i < args.length; i++) {
+                    if(args[i].equals("-m") && i+1 < args.length) {
+                        message = args[i+1];
+                        i++;
+                    } else if(args[i].equals("-p") && i+1 < args.length) {
+                        parentHash = args[i+1];
+                        i++;
+                    }
+                }
+
+                if(message == null) {
+                    System.out.println("Error: commit message required. Use -m <commit-message>");
+                    break;
+                }
+
+                System.out.println(commitTree(treeHash1, message, parentHash));
+
+                break;
+
             default:
                 System.out.println(command + " is not a valid command");
                 break;
@@ -362,5 +393,45 @@ public class Main {
             System.out.println("cannot read .mini-gitignore file " + e.getMessage());
         }
         return set;
+    }
+
+    public static String commitTree(String treeHash, String message, String parentHash) {
+        String commitText = getCommitText(treeHash, message, parentHash);
+        byte[] commitTextBytes = commitText.getBytes(StandardCharsets.UTF_8);
+
+        String header = "commit " + commitTextBytes.length + "\0";
+
+        byte[] combinedCommitBytes = null;
+        try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            baos.write(header.getBytes(StandardCharsets.UTF_8));
+            baos.write(commitTextBytes);
+
+            combinedCommitBytes = baos.toByteArray();
+        } catch (IOException e) {
+            System.out.println("Error creating header for commit. " + e.getMessage());
+        }
+
+
+        String commitHex = generateHexString(combinedCommitBytes);
+        saveGitObjectToDisk(commitHex, combinedCommitBytes);
+
+        return commitHex;
+    }
+
+    public static String getCommitText(String treeHash, String message, String parentHash) {
+        long currentTime = System.currentTimeMillis() / 1000;
+
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("tree ").append(treeHash).append("\n");
+        if(parentHash != null) {
+            sb.append("parent ").append(parentHash).append("\n");
+        }
+        sb.append("author User ").append("<user@example.com> ").append(currentTime).append(" +0000\n");
+        sb.append("committer User ").append("<user@example.com ").append(currentTime).append(" +0000\n");
+        sb.append("\n");
+        sb.append(message).append("\n");
+
+        return sb.toString();
     }
 }
