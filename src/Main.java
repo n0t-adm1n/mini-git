@@ -11,7 +11,7 @@ import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
 
 public class Main {
-    static void main(String[] args) {
+    public static void main(String[] args) {
         if(args.length == 0) {
             System.out.println("Usage: java Main <command> [<args>]");
             return;
@@ -75,7 +75,7 @@ public class Main {
                 }
 
                 if(printFlag) {
-                    catFile(hash);
+                    System.out.println(catFile(hash));
                 } else {
                     System.out.println("provide the -p flag");
                 }
@@ -89,17 +89,16 @@ public class Main {
                 break;
 
             case "commit-tree" :
-
                 if(args.length < 4) {
                     System.out.println("Usage: commit-tree <tree-hash> -m <message> [-p <parent-hash>]");
                     break;
                 }
 
-
                 String treeHash1 = args[1];
                 String message = null;
                 String parentHash = null;
 
+                // Dynamically parse for message and parent flags regardless of order
                 for(int i = 1; i < args.length; i++) {
                     if(args[i].equals("-m") && i+1 < args.length) {
                         message = args[i+1];
@@ -116,7 +115,16 @@ public class Main {
                 }
 
                 System.out.println(commitTree(treeHash1, message, parentHash));
+                break;
 
+            case "log" :
+                if(args.length < 2) {
+                    System.out.println("Usage: log <commit-hash>");
+                    break;
+                }
+
+                String commitHash = args[1];
+                log(commitHash);
                 break;
 
             default:
@@ -127,7 +135,8 @@ public class Main {
 
     /**
      * Replicates `git init`.
-     * Creates the hidden directory structure and the HEAD reference file.
+     * Creates the hidden directory structure required for a Git database.
+     * Also initializes the HEAD file which acts as a pointer to the current active branch.
      */
     public static void initializeRepository() {
         Path path = Paths.get(".minigit");
@@ -154,6 +163,9 @@ public class Main {
         }
     }
 
+    /**
+     * High-level wrapper to create a blob, hash it, and save it to the disk.
+     */
     public static void writeToDisk(String filename) {
         byte[] blob = createBlob(filename);
         String hexString = generateHexString(blob);
@@ -161,8 +173,12 @@ public class Main {
     }
 
     /**
-     * Reads a file and prepends the Git blob header.
-     * Format: "blob <size in bytes>\0<file contents>"
+     * Reads a file and prepends the strict Git blob header.
+     * Git format: "blob <size_in_bytes>\0<original_file_contents>"
+     * The null byte ('\0') is critical as it separates the metadata header from the actual payload.
+     *
+     * @param filename The path to the file to be converted into a blob.
+     * @return A byte array containing the header and file contents combined.
      */
     public static byte[] createBlob(String filename) {
         Path filePath = Paths.get(filename);
@@ -171,10 +187,10 @@ public class Main {
             byte[] byteFile = Files.readAllBytes(filePath);
             String filesize = String.valueOf(Files.size(filePath));
 
-            // The null byte '\0' is critical: it separates the header from the actual data
             String header = "blob " + filesize + '\0';
             byte[] headerBytes = header.getBytes(StandardCharsets.UTF_8);
 
+            // Create a new array large enough to hold both the header and the file payload
             blob = new byte[headerBytes.length + byteFile.length];
 
             System.arraycopy(headerBytes, 0, blob, 0, headerBytes.length);
@@ -186,7 +202,8 @@ public class Main {
     }
 
     /**
-     * Generates the 40-character SHA-1 hash for any byte array.
+     * Generates a 40-character SHA-1 hash (checksum) for any given byte array.
+     * This hash acts as the unique ID and filename for the object in Git's key-value datastore.
      */
     public static String generateHexString(byte[] blob) {
         if(blob == null) {
@@ -204,8 +221,10 @@ public class Main {
     }
 
     /**
-     * Compresses (using zlib) and saves an object to the .minigit/objects directory.
-     * Git splits the 40-char hash: first 2 chars = folder name, remaining 38 = file name.
+     * Compresses and saves a Git object to the `.minigit/objects` directory.
+     * Git splits the 40-character SHA-1 hash into two parts to optimize file system lookups:
+     * - The first 2 characters become the directory name.
+     * - The remaining 38 characters become the file name.
      */
     public static void saveGitObjectToDisk(String hexString, byte[] rawData) {
         String folderName = hexString.substring(0, 2);
@@ -227,16 +246,17 @@ public class Main {
 
     /**
      * Replicates `git cat-file -p`.
-     * Decompresses an object, strips the Git header, and prints the raw contents.
+     * Locates a compressed object by its hash, decompresses it on the fly,
+     * strips away the Git header, and returns the raw file contents as a String.
      */
-    public static void catFile(String hash) {
+    public static String catFile(String hash) {
         String dirname  = hash.substring(0,2);
         String filename = hash.substring(2);
         Path objectPath = Paths.get(".minigit", "objects", dirname, filename);
 
         try(
                 FileInputStream fis = new FileInputStream(objectPath.toFile());
-                InflaterInputStream iis = new InflaterInputStream(fis); // Decompress zlib on the fly
+                InflaterInputStream iis = new InflaterInputStream(fis); // Decompresses zlib data
         ) {
             byte[] data = iis.readAllBytes();
             int i = 0;
@@ -246,19 +266,21 @@ public class Main {
                 i++;
             }
 
-            // Slice the array to keep only the bytes AFTER the null byte
+            // Slice the array to keep only the actual payload (everything AFTER the null byte)
             data = Arrays.copyOfRange(data, i+1, data.length);
-            String res = new String(data);
-            System.out.print(res);
+            return new String(data);
 
         } catch (IOException e) {
             System.out.println("error while reading file " + e.getMessage());
         }
+
+        return null;
     }
 
     /**
      * Replicates `git write-tree`.
-     * Recursively traverses the working directory to build Tree objects representing folders.
+     * Recursively traverses the working directory to build Tree objects.
+     * A Tree object in Git acts like a directory, mapping filenames to Blob hashes or other Tree hashes.
      */
     public static String writeTree(Set<String> ignoreSet, Path path) {
         List<byte[]> treeEntries = new ArrayList<>();
@@ -270,13 +292,13 @@ public class Main {
             for(Path p : paths) {
                 String filename = p.getFileName().toString();
 
-                // Prevent infinite loops by ignoring the .minigit/.git databases
+                // Prevent infinite loops by ignoring the .minigit/.git databases and the ignore list
                 if(!ignoreSet.contains(filename) && !filename.equals(".minigit") && !filename.equals(".git") ) {
 
                     if(Files.isRegularFile(p)) {
                         treeEntries.add(getFileHexBytes(p));
                     } else if(Files.isDirectory(p)) {
-                        // Recursively hash the sub-directory first
+                        // Recursively process subdirectories
                         String subDirHash = writeTree(ignoreSet, p);
                         if(subDirHash != null) {
                             treeEntries.add(getDirectoryHexBytes(p, subDirHash));
@@ -289,7 +311,7 @@ public class Main {
 
             byte[] combinedTreeEntries = combineTreeEntries(treeEntries);
 
-            // Just like blobs, trees need a header before hashing
+            // Trees require a header before hashing, just like Blobs
             String treeHeader = "tree " + combinedTreeEntries.length + "\0";
 
             byte[] finalTreeObject;
@@ -302,7 +324,7 @@ public class Main {
             String treeHex = generateHexString(finalTreeObject);
             saveGitObjectToDisk(treeHex, finalTreeObject);
 
-            return treeHex; // Return hash to parent directory for recursive building
+            return treeHex; // Return hash to the parent directory for recursive building
         } catch (IOException e) {
             System.out.println("Error occurred while writing tree: " + e.getMessage());
         }
@@ -310,11 +332,11 @@ public class Main {
     }
 
     /**
-     * Formats a single file entry for a Git Tree.
-     * Format: "[mode] [filename]\0[20-byte binary hash]"
+     * Formats a single file entry to be inserted into a Tree object.
+     * Git Tree Entry Format: "[mode] [filename]\0[20-byte binary hash]"
      */
     public static byte[] getFileHexBytes(Path p) {
-        String mode = "100644 "; // Standard file mode
+        String mode = "100644 "; // Standard file permissions mode in Git
         String filename = p.getFileName().toString();
         String header = mode + filename + '\0';
 
@@ -322,7 +344,7 @@ public class Main {
         String blobHash = generateHexString(blob);
         saveGitObjectToDisk(blobHash, blob);
 
-        // Git trees store the hash as 20 raw bytes, NOT a 40-character text string
+        // Git trees store the object hash as 20 raw binary bytes, NOT a 40-character text string
         byte[] fileHashByte = HexFormat.of().parseHex(blobHash);
 
         try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
@@ -336,10 +358,10 @@ public class Main {
     }
 
     /**
-     * Formats a single directory entry for a Git Tree.
+     * Formats a single directory entry to be inserted into a parent Tree object.
      */
     public static byte[] getDirectoryHexBytes(Path p, String subDirHash) {
-        String mode = "40000 "; // Directory mode
+        String mode = "40000 "; // Standard directory mode in Git
         String header = mode + p.getFileName().toString() + '\0';
 
         // Convert the child directory's 40-char string hash back into 20 binary bytes
@@ -356,7 +378,7 @@ public class Main {
     }
 
     /**
-     * Safely combines a list of byte arrays into a single continuous byte stream.
+     * Safely combines a list of binary Tree entries into a single continuous byte stream.
      */
     public static byte[] combineTreeEntries(List<byte[]> treeEntries) {
         try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
@@ -371,7 +393,7 @@ public class Main {
     }
 
     /**
-     * Reads a custom .mini-gitignore file to avoid tracking unneeded files/folders.
+     * Reads a custom `.mini-gitignore` file to avoid tracking unneeded files/folders.
      */
     public static Set<String> getIgnoreSet() {
         Set<String> set = new HashSet<>();
@@ -395,10 +417,15 @@ public class Main {
         return set;
     }
 
+    /**
+     * Replicates `git commit-tree`.
+     * Wraps a Tree hash into a Commit object, linking it to a parent commit to form the repository history.
+     */
     public static String commitTree(String treeHash, String message, String parentHash) {
         String commitText = getCommitText(treeHash, message, parentHash);
         byte[] commitTextBytes = commitText.getBytes(StandardCharsets.UTF_8);
 
+        // Commits also require a header before hashing
         String header = "commit " + commitTextBytes.length + "\0";
 
         byte[] combinedCommitBytes = null;
@@ -411,13 +438,15 @@ public class Main {
             System.out.println("Error creating header for commit. " + e.getMessage());
         }
 
-
         String commitHex = generateHexString(combinedCommitBytes);
         saveGitObjectToDisk(commitHex, combinedCommitBytes);
 
         return commitHex;
     }
 
+    /**
+     * Generates the plain text payload for a Commit object following strict Git formatting rules.
+     */
     public static String getCommitText(String treeHash, String message, String parentHash) {
         long currentTime = System.currentTimeMillis() / 1000;
 
@@ -427,11 +456,47 @@ public class Main {
         if(parentHash != null) {
             sb.append("parent ").append(parentHash).append("\n");
         }
-        sb.append("author User ").append("<user@example.com> ").append(currentTime).append(" +0000\n");
-        sb.append("committer User ").append("<user@example.com ").append(currentTime).append(" +0000\n");
+
+        // Git strictly requires emails to be enclosed in angle brackets < >
+        sb.append("author User <user@example.com> ").append(currentTime).append(" +0000\n");
+        sb.append("committer User <user@example.com> ").append(currentTime).append(" +0000\n");
         sb.append("\n");
+
+        // Commit messages should end with a trailing newline
         sb.append(message).append("\n");
 
         return sb.toString();
+    }
+
+    /**
+     * Replicates `git log`.
+     * Recursively reads commits starting from a given hash and traversing backwards through parents.
+     */
+    public static void log(String commitHash) {
+        String commitStr = catFile(commitHash);
+
+        String[] strs = commitStr.split("\n");
+        boolean isMessage = false;
+        String parentHash = null;
+        StringBuilder commitMessage = new StringBuilder();
+
+        // Parse the commit payload line by line
+        for(String line : strs) {
+            if(isMessage) {
+                commitMessage.append(line).append("\n");
+            } else if(line.startsWith("parent ")) {
+                parentHash = line.substring(7); // Extract the 40-char hash next to the "parent " string
+            } else if(line.isEmpty()) {
+                isMessage = true;  // The first empty line separates headers from the commit message
+            }
+        }
+
+        System.out.println("commit " + commitHash);
+        System.out.println("\n    " + commitMessage.toString().trim() + "\n");
+
+        // Follow the DAG backwards recursively
+        if(parentHash != null) {
+            log(parentHash);
+        }
     }
 }
