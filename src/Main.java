@@ -118,13 +118,39 @@ public class Main {
                 break;
 
             case "log" :
+                String commitHash = null;
+                Path path = Paths.get(".minigit/HEAD");
+                try {
+                    String ref = Files.readString(path).trim();  // remove /n
+
+                    if(ref.startsWith("ref: ")) {
+                        ref = ref.substring(5);
+
+                        Path branchPath = Paths.get(".minigit/" + ref);
+                        commitHash = Files.readString(branchPath).trim(); // remove /n
+                    }
+                } catch (IOException e) {
+                    System.out.println("error reading head ref. " + e.getMessage());
+                }
+
+                if(commitHash != null) {
+                    log(commitHash);
+                } else {
+                    System.out.println("No commit found!");
+                }
+                break;
+
+
+            case "update-ref" :
+
                 if(args.length < 2) {
-                    System.out.println("Usage: log <commit-hash>");
+                    System.out.println("Usage: update-ref <commit-hash>");
                     break;
                 }
 
-                String commitHash = args[1];
-                log(commitHash);
+                String commitHashToSave = args[1];
+
+                updateRef(commitHashToSave);
                 break;
 
             default:
@@ -144,8 +170,8 @@ public class Main {
                 ".minigit/objects",
                 ".minigit/refs"
         );
-        Path headPath = Paths.get(".minigit/HEAD.txt");
-        String headContent = "ref: refs/HEAD/main\n";
+        Path headPath = Paths.get(".minigit/HEAD");
+        String headContent = "ref: refs/heads/main\n";
 
         try {
             Files.createDirectory(path);
@@ -497,6 +523,18 @@ public class Main {
         // Follow the DAG backwards recursively
         if(parentHash != null) {
             log(parentHash);
+        }
+    }
+
+    public static void updateRef(String commitHash) {
+        Path path = Paths.get(".minigit/refs/heads/main");
+
+        try {
+            Files.createDirectories(path.getParent()); // will create the missing directories
+
+            Files.writeString(path, commitHash + "\n");
+        } catch (IOException e) {
+            System.out.println("Error updating main ref. " + e.getMessage());
         }
     }
 }
