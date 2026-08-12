@@ -118,23 +118,10 @@ public class Main {
                 break;
 
             case "log" :
-                String commitHash = null;
-                Path path = Paths.get(".minigit/HEAD");
-                try {
-                    String ref = Files.readString(path).trim();  // remove /n
+                String headHash = getCurrentHeadHash();;
 
-                    if(ref.startsWith("ref: ")) {
-                        ref = ref.substring(5);
-
-                        Path branchPath = Paths.get(".minigit/" + ref);
-                        commitHash = Files.readString(branchPath).trim(); // remove /n
-                    }
-                } catch (IOException e) {
-                    System.out.println("error reading head ref. " + e.getMessage());
-                }
-
-                if(commitHash != null) {
-                    log(commitHash);
+                if(headHash != null) {
+                    log(headHash);
                 } else {
                     System.out.println("No commit found!");
                 }
@@ -162,28 +149,19 @@ public class Main {
 
                 String commitMessage = args[2];
 
-                // hash of current files
-                Set<String> ignoreSet1 = getIgnoreSet();
-                Path root1 = Paths.get("");
-                String treeHash1_ = writeTree(ignoreSet1, root1);
+                // snapshot of the directory
+                String currentTreeHash = writeTree(getIgnoreSet(), Paths.get(""));
 
-                String parentHash1 = null;
-                Path path1 = Paths.get(".minigit/HEAD");
-                try {
-                    String ref = Files.readString(path1).trim();  // remove /n
+                // get parents hash stored in HEAD file
+                String parentCommitHash = getCurrentHeadHash();
 
-                    if(ref.startsWith("ref: ")) {
-                        ref = ref.substring(5);
+                // create the commit object and get its hash
+                String newCommitHash = commitTree(currentTreeHash, commitMessage, parentCommitHash);
 
-                        Path branchPath = Paths.get(".minigit/" + ref);
-                        parentHash1 = Files.readString(branchPath).trim(); // remove /n
-                    }
-                } catch (IOException e) {
-                    System.out.println("error reading head ref. " + e.getMessage());
-                }
+                // update branch pointers
+                updateRef(newCommitHash);
 
-                String commitHash1 = commitTree(treeHash1_, commitMessage, parentHash1);
-                updateRef(commitHash1);
+                System.out.println("commit created. " + newCommitHash);
 
                 break;
 
@@ -571,5 +549,24 @@ public class Main {
         } catch (IOException e) {
             System.out.println("Error updating main ref. " + e.getMessage());
         }
+    }
+
+    public static String getCurrentHeadHash() {
+        String headHash = null;
+        Path headPath = Paths.get(".minigit/HEAD");
+        try {
+            String ref = Files.readString(headPath).trim();  // remove /n
+
+            if(ref.startsWith("ref: ")) {
+                ref = ref.substring(5);
+
+                Path branchPath = Paths.get(".minigit/" + ref);
+                headHash = Files.readString(branchPath).trim(); // remove /n
+            }
+        } catch (IOException e) {
+            System.out.println("error reading head ref. " + e.getMessage());
+        }
+
+        return headHash;
     }
 }
