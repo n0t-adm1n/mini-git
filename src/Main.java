@@ -153,6 +153,41 @@ public class Main {
                 updateRef(commitHashToSave);
                 break;
 
+
+            case "commit" :
+                if(args.length < 3) {
+                    System.out.println("Usage: commit -m \"<commit-message>\"");
+                    break;
+                }
+
+                String commitMessage = args[2];
+
+                // hash of current files
+                Set<String> ignoreSet1 = getIgnoreSet();
+                Path root1 = Paths.get("");
+                String treeHash1_ = writeTree(ignoreSet1, root1);
+
+                String parentHash1 = null;
+                Path path1 = Paths.get(".minigit/HEAD");
+                try {
+                    String ref = Files.readString(path1).trim();  // remove /n
+
+                    if(ref.startsWith("ref: ")) {
+                        ref = ref.substring(5);
+
+                        Path branchPath = Paths.get(".minigit/" + ref);
+                        parentHash1 = Files.readString(branchPath).trim(); // remove /n
+                    }
+                } catch (IOException e) {
+                    System.out.println("error reading head ref. " + e.getMessage());
+                }
+
+                String commitHash1 = commitTree(treeHash1_, commitMessage, parentHash1);
+                updateRef(commitHash1);
+
+                break;
+
+
             default:
                 System.out.println(command + " is not a valid command");
                 break;
