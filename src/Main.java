@@ -118,7 +118,7 @@ public class Main {
                 break;
 
             case "log" :
-                String headHash = getCurrentHeadHash();;
+                String headHash = getCurrentHeadHash();
 
                 if(headHash != null) {
                     log(headHash);
@@ -555,13 +555,17 @@ public class Main {
         String headHash = null;
         Path headPath = Paths.get(".minigit/HEAD");
         try {
+            // if no head file exists
+            if(!Files.exists(headPath)) return null;
+
             String ref = Files.readString(headPath).trim();  // remove /n
 
             if(ref.startsWith("ref: ")) {
                 ref = ref.substring(5);
 
                 Path branchPath = Paths.get(".minigit/" + ref);
-                headHash = Files.readString(branchPath).trim(); // remove /n
+                if(Files.exists(branchPath))
+                    headHash = Files.readString(branchPath).trim(); // remove /n
             }
         } catch (IOException e) {
             System.out.println("error reading head ref. " + e.getMessage());
