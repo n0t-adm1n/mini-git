@@ -199,7 +199,16 @@ public class Main {
         Path headPath = Paths.get(".minigit/HEAD");
         String headContent = "ref: refs/heads/main\n";
 
+        Path ignorePath = Paths.get(".mini-gitignore");
+        String defaultIgnoreContent = ".minigit\n.git\n.idea\nout\ntarget\n";
+
         try {
+
+            if(Files.exists(path)) {
+                System.out.println("Repository is already initialized.");
+                return;
+            }
+
             Files.createDirectory(path);
 
             for(String p : subDirectoriesPath) {
@@ -208,6 +217,13 @@ public class Main {
             }
 
             Files.writeString(headPath, headContent);
+
+            // create the .mini-gitignore file if it doesn't exists already
+            if(!Files.exists(ignorePath)) {
+                Files.writeString(ignorePath, defaultIgnoreContent);
+            }
+
+
             System.out.println("Initialized project");
 
         } catch (IOException e) {
@@ -474,7 +490,7 @@ public class Main {
         Set<String> set = new HashSet<>();
         Path ignoreFile = Paths.get(".mini-gitignore");
 
-        if(!Files.exists(ignoreFile)) return set;
+        if(!Files.exists(ignoreFile)) throw new RuntimeException("Create the .mini-gitignore file");
 
         try( Stream<String> dirAndFilesToIgnoreStream = Files.lines(ignoreFile);) {
             for(String s : dirAndFilesToIgnoreStream.toList()) {
@@ -646,7 +662,7 @@ public class Main {
 
         // update the HEAD to point to checked out commit and prevent the detached HEAD issue
         try {
-            Files.writeString(Paths.get(".minigit/HEAD"), commitHash);
+            Files.writeString(Paths.get(".minigit/HEAD"), commitHash + "\n");
             System.out.println("HEAD is now at " + commitHash);
         } catch (IOException e) {
             System.out.println("Error updating HEAD. " + e.getMessage());
