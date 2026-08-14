@@ -576,14 +576,26 @@ public class Main {
     }
 
     public static void updateRef(String commitHash) {
-        Path path = Paths.get(".minigit/refs/heads/main");
+        Path path = Paths.get(".minigit/HEAD");
 
         try {
-            Files.createDirectories(path.getParent()); // will create the missing directories
+            if(!Files.exists(path)) return;
 
-            Files.writeString(path, commitHash + "\n");
+            String ref = Files.readString(path).trim();
+
+            if (ref.startsWith("ref: ")) {
+                // We are on a branch! Extract the branch path and update it.
+                String branchPathStr = ref.substring(5);
+                Path branchPath = Paths.get(".minigit", branchPathStr);
+
+                Files.createDirectories(branchPath.getParent());
+                Files.writeString(branchPath, commitHash + "\n");
+            } else {
+                // We are in a detached HEAD state! Update the HEAD file directly.
+                Files.writeString(path, commitHash + "\n");
+            }
         } catch (IOException e) {
-            System.out.println("Error updating main ref. " + e.getMessage());
+            System.out.println("Error updating ref. " + e.getMessage());
         }
     }
 
@@ -602,6 +614,9 @@ public class Main {
                 Path branchPath = Paths.get(".minigit/" + ref);
                 if(Files.exists(branchPath))
                     headHash = Files.readString(branchPath).trim(); // remove /n
+            } else {
+                // HEAD file doesn't exist we are in detached state
+                headHash = ref;
             }
         } catch (IOException e) {
             System.out.println("error reading head ref. " + e.getMessage());
