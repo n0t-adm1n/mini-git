@@ -625,8 +625,21 @@ public class Main {
         }
 
 
-        //clearWorkingDirectory(Paths.get(""), getIgnoreSet());
+        clearWorkingDirectory(Paths.get(""), getIgnoreSet());
 
+        checkoutTree(treeHash, Paths.get(""));
+
+        // update the HEAD to point to checked out commit and prevent the detached HEAD issue
+        try {
+            Files.writeString(Paths.get(".minigit/HEAD"), commitHash);
+            System.out.println("HEAD is now at " + commitHash);
+        } catch (IOException e) {
+            System.out.println("Error updating HEAD. " + e.getMessage());
+        }
+
+    }
+
+    public static void checkoutTree(String treeHash, Path basePath) {
         byte[] treeBytes = getRawObjectBytes(treeHash);
 
         if(treeBytes == null) {
@@ -643,10 +656,12 @@ public class Main {
 
         while(i < treeBytes.length) {
 
-            //skipping file mode
+            //getting file mode
+            int modeStart = i;
             while(treeBytes[i] != ' ') {
                 i++;
             }
+            String mode = new String(treeBytes, modeStart, i-modeStart, StandardCharsets.UTF_8);
             i++;
 
             //get the start and end of a file byte
@@ -662,11 +677,36 @@ public class Main {
             byte[] rawHash = Arrays.copyOfRange(treeBytes, i , i+20);
             i += 20;
 
-            String fileHash = HexFormat.of().formatHex(rawHash);
+            String objectHash = HexFormat.of().formatHex(rawHash);
 
-            System.out.println("Filename: " + filename + " filehash: " + fileHash);
+            Path targetPath = basePath.resolve(filename);
+
+            // if mode is directory
+            if(mode.equals("40000")) {
+                try{
+                    Files.createDirectories(targetPath);
+                    System.out.println("Created directory: " + targetPath);
+
+                    checkoutTree(objectHash, targetPath);
+                } catch (IOException e) {
+                    System.out.println("Error creating directory. " + e.getMessage());
+                }
+            } else {
+                // if is is a file
+                System.out.println("Restoring file: " + filename);
+                // convert the filehash back to text form
+                String fileContent = catFile(objectHash);
+
+                try{
+                    Files.writeString(targetPath, fileContent);
+                } catch (IOException e) {
+                    System.out.println("Error writing to " + filename + ". " + e.getMessage());
+                }
+            }
+
+
+
         }
-
     }
 
     public static void clearWorkingDirectory(Path path, Set<String> ignoreSet) {
@@ -691,7 +731,6 @@ public class Main {
                     System.out.println(filename + " is something else");
                 }
 
-                //delete the
 
             }
         } catch (IOException e) {
