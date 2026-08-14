@@ -165,6 +165,19 @@ public class Main {
 
                 break;
 
+            case "checkout" :
+
+                if(args.length < 2) {
+                    System.out.println("Usage: checkout <commit-hash>");
+                    break;
+                }
+
+                String commitHash = args[1];
+
+                checkout(commitHash);
+
+                break;
+
 
             default:
                 System.out.println(command + " is not a valid command");
@@ -572,5 +585,55 @@ public class Main {
         }
 
         return headHash;
+    }
+
+    public static void checkout(String commitHash) {
+        // get commit object
+        String commitObject = catFile(commitHash);
+
+        // read tree hash from commit object
+        String[] strs = commitObject.split("\n");
+        String treeHash = null;
+        for(String s : strs) {
+            if(s.startsWith("tree ")) {
+                treeHash = s.substring(5);
+                break;
+            }
+        }
+
+
+        clearWorkingDirectory(Paths.get("delete-test"), getIgnoreSet());
+
+    }
+
+    public static void clearWorkingDirectory(Path path, Set<String> ignoreSet) {
+
+        try(Stream<Path> files = Files.list(path)) {
+            List<Path> pathList = files.toList();
+
+            for(Path p : pathList) {
+                String filename = p.getFileName().toString();
+
+                if(ignoreSet.contains(filename)) {
+                    continue;
+                }
+
+                if(Files.isDirectory(p)) {
+                    // recursively remove everything inside the directory
+                    clearWorkingDirectory(p, ignoreSet);
+                    Files.delete(p);
+                } else if(Files.isRegularFile(p)) {
+                    Files.delete(p);
+                } else {
+                    System.out.println(filename + " is something else");
+                }
+
+                //delete the
+
+            }
+        } catch (IOException e) {
+            System.out.println("error occurred while clearing directory. " + e.getMessage());
+        }
+
     }
 }
