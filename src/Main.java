@@ -329,6 +329,29 @@ public class Main {
         return null;
     }
 
+
+    /**
+     * Helper method for checkout and write-tree.
+     * Decompresses a Git object and returns its RAW bytes, preserving binary hashes.
+     */
+    public static byte[] getRawObjectBytes(String hash) {
+        String dirname  = hash.substring(0, 2);
+        String filename = hash.substring(2);
+        Path objectPath = Paths.get(".minigit", "objects", dirname, filename);
+
+        try (
+                FileInputStream fis = new FileInputStream(objectPath.toFile());
+                InflaterInputStream iis = new InflaterInputStream(fis)
+        ) {
+            // Return the entire decompressed file (including the header!) as raw bytes
+            return iis.readAllBytes();
+
+        } catch (IOException e) {
+            System.out.println("error while reading raw object bytes: " + e.getMessage());
+        }
+        return null;
+    }
+
     /**
      * Replicates `git write-tree`.
      * Recursively traverses the working directory to build Tree objects.
@@ -602,7 +625,47 @@ public class Main {
         }
 
 
-        clearWorkingDirectory(Paths.get("delete-test"), getIgnoreSet());
+        //clearWorkingDirectory(Paths.get(""), getIgnoreSet());
+
+        byte[] treeBytes = getRawObjectBytes(treeHash);
+
+        if(treeBytes == null) {
+            System.out.println("Error reading tree object.");
+            return;
+        }
+
+        //finding where header ends (null byte)
+        int i = 0;
+        while(treeBytes[i] != 0) {
+            i++;
+        }
+        i++;
+
+        while(i < treeBytes.length) {
+
+            //skipping file mode
+            while(treeBytes[i] != ' ') {
+                i++;
+            }
+            i++;
+
+            //get the start and end of a file byte
+            int nameStart = i;
+            while(treeBytes[i] != 0) {
+                i++;
+            }
+
+            String filename = new String(treeBytes, nameStart, i-nameStart, StandardCharsets.UTF_8);
+            i++;
+
+            // get the raw file hash
+            byte[] rawHash = Arrays.copyOfRange(treeBytes, i , i+20);
+            i += 20;
+
+            String fileHash = HexFormat.of().formatHex(rawHash);
+
+            System.out.println("Filename: " + filename + " filehash: " + fileHash);
+        }
 
     }
 
