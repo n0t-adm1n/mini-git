@@ -32,8 +32,8 @@ public class GitObject {
             byte[] byteFile = Files.readAllBytes(filePath);
             String filesize = String.valueOf(Files.size(filePath));
 
-            String header = "blob " + filesize + '\0';
-            byte[] headerBytes = header.getBytes(StandardCharsets.UTF_8);
+
+            byte[] headerBytes = createHeader("blob", byteFile.length);
 
             // Create a new array large enough to hold both the header and the file payload
             blob = new byte[headerBytes.length + byteFile.length];
@@ -121,9 +121,8 @@ public class GitObject {
      * - The remaining 38 characters become the file name.
      */
     public static void saveGitObjectToDisk(String hexString, byte[] rawData) {
-        String folderName = hexString.substring(0, 2);
-        String fileName   = hexString.substring(2, 40);
-        Path objectPath = Paths.get(".minigit", "objects", folderName, fileName);
+
+        Path objectPath = getObjectPath(hexString);
 
         try {
             Files.createDirectories(objectPath.getParent());
@@ -145,21 +144,14 @@ public class GitObject {
      * strips away the Git header, and returns the raw file contents as a String.
      */
     public static String catFile(String hash) {
-        String dirname  = hash.substring(0,2);
-        String filename = hash.substring(2);
-        Path objectPath = Paths.get(".minigit", "objects", dirname, filename);
+        Path objectPath = getObjectPath(hash);
 
         try(
                 FileInputStream fis = new FileInputStream(objectPath.toFile());
                 InflaterInputStream iis = new InflaterInputStream(fis); // Decompresses zlib data
         ) {
             byte[] data = iis.readAllBytes();
-            int i = 0;
-
-            // Iterate through the bytes until we find the null byte (0) that ends the header
-            while(data[i] != 0) {
-                i++;
-            }
+            int i = getPayloadStartIndex(data);  //skips the null byte
 
             // Slice the array to keep only the actual payload (everything AFTER the null byte)
             data = Arrays.copyOfRange(data, i+1, data.length);
@@ -208,11 +200,11 @@ public class GitObject {
             byte[] combinedTreeEntries = GitObject.combineTreeEntries(treeEntries);
 
             // Trees require a header before hashing, just like Blobs
-            String treeHeader = "tree " + combinedTreeEntries.length + "\0";
+            byte[] treeHeader = createHeader("tree", combinedTreeEntries.length);
 
             byte[] finalTreeObject;
             try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-                baos.write(treeHeader.getBytes(StandardCharsets.UTF_8));
+                baos.write(treeHeader);
                 baos.write(combinedTreeEntries);
                 finalTreeObject = baos.toByteArray();
             }
@@ -237,11 +229,11 @@ public class GitObject {
         byte[] commitTextBytes = commitText.getBytes(StandardCharsets.UTF_8);
 
         // Commits also require a header before hashing
-        String header = "commit " + commitTextBytes.length + "\0";
+        byte[] header = createHeader("commit", commitTextBytes.length);
 
         byte[] combinedCommitBytes = null;
         try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            baos.write(header.getBytes(StandardCharsets.UTF_8));
+            baos.write(header);
             baos.write(commitTextBytes);
 
             combinedCommitBytes = baos.toByteArray();
@@ -323,9 +315,7 @@ public class GitObject {
      * Decompresses a Git object and returns its RAW bytes, preserving binary hashes.
      */
     public static byte[] getRawObjectBytes(String hash) {
-        String dirname  = hash.substring(0, 2);
-        String filename = hash.substring(2);
-        Path objectPath = Paths.get(".minigit", "objects", dirname, filename);
+        Path objectPath = getObjectPath(hash);
 
         try {
             return FileUtils.decompressZlibFile(objectPath);
@@ -366,11 +356,7 @@ public class GitObject {
         }
 
         //finding where header ends (null byte)
-        int i = 0;
-        while(treeBytes[i] != 0) {
-            i++;
-        }
-        i++;
+        int i = getPayloadStartIndex(treeBytes);
 
         while(i < treeBytes.length) {
 
@@ -421,9 +407,25 @@ public class GitObject {
                     System.out.println("Error writing to " + filename + ". " + e.getMessage());
                 }
             }
-
-
-
         }
+    }
+
+    private static Path getObjectPath(String hash) {
+        String dirname  = hash.substring(0, 2);
+        String filename = hash.substring(2);
+        return Paths.get(".minigit", "objects", dirname, filename);
+    }
+
+    private static int getPayloadStartIndex(byte[] data) {
+        int i = 0;
+        while (i < data.length && data[i] != 0) {
+            i++;
+        }
+        return i + 1;
+    }
+
+    private static byte[] createHeader(String type, int size) {
+        String header = type + " " + size + '\0';
+        return header.getBytes(StandardCharsets.UTF_8);
     }
 }
