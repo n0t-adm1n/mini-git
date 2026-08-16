@@ -48,32 +48,8 @@ public class Main {
                 break;
 
             case "commit-tree" :
-                if(args.length < 4) {
-                    System.out.println("Usage: commit-tree <tree-hash> -m <message> [-p <parent-hash>]");
-                    break;
-                }
-
-                String treeHash1 = args[1];
-                String message = null;
-                String parentHash = null;
-
-                // Dynamically parse for message and parent flags regardless of order
-                for(int i = 1; i < args.length; i++) {
-                    if(args[i].equals("-m") && i+1 < args.length) {
-                        message = args[i+1];
-                        i++;
-                    } else if(args[i].equals("-p") && i+1 < args.length) {
-                        parentHash = args[i+1];
-                        i++;
-                    }
-                }
-
-                if(message == null) {
-                    System.out.println("Error: commit message required. Use -m <commit-message>");
-                    break;
-                }
-
-                System.out.println(commitTree(treeHash1, message, parentHash));
+                GitCommand commitTreeCmd = new CommitTreeCommand();
+                commitTreeCmd.execute(args);
                 break;
 
             case "log" :
@@ -202,32 +178,7 @@ public class Main {
 
 
 
-    /**
-     * Replicates `git commit-tree`.
-     * Wraps a Tree hash into a Commit object, linking it to a parent commit to form the repository history.
-     */
-    public static String commitTree(String treeHash, String message, String parentHash) {
-        String commitText = GitObject.getCommitText(treeHash, message, parentHash);
-        byte[] commitTextBytes = commitText.getBytes(StandardCharsets.UTF_8);
 
-        // Commits also require a header before hashing
-        String header = "commit " + commitTextBytes.length + "\0";
-
-        byte[] combinedCommitBytes = null;
-        try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            baos.write(header.getBytes(StandardCharsets.UTF_8));
-            baos.write(commitTextBytes);
-
-            combinedCommitBytes = baos.toByteArray();
-        } catch (IOException e) {
-            System.out.println("Error creating header for commit. " + e.getMessage());
-        }
-
-        String commitHex = HashUtils.generateHexString(combinedCommitBytes);
-        GitObject.saveGitObjectToDisk(commitHex, combinedCommitBytes);
-
-        return commitHex;
-    }
 
 
 
