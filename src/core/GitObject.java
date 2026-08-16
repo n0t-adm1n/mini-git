@@ -1,5 +1,6 @@
 package core;
 
+import utils.FileUtils;
 import utils.HashUtils;
 
 import java.io.ByteArrayOutputStream;
@@ -285,5 +286,35 @@ public class GitObject {
         if(parentHash != null) {
             log(parentHash);
         }
+    }
+
+
+    public static void checkout(String commitHash) {
+        // get commit object
+        String commitObject = catFile(commitHash);
+
+        // read tree hash from commit object
+        String[] strs = commitObject.split("\n");
+        String treeHash = null;
+        for(String s : strs) {
+            if(s.startsWith("tree ")) {
+                treeHash = s.substring(5);
+                break;
+            }
+        }
+
+
+        FileUtils.clearWorkingDirectory(Paths.get(""), FileUtils.getIgnoreSet());
+
+        checkoutTree(treeHash, Paths.get(""));
+
+        // update the HEAD to point to checked out commit and prevent the detached HEAD issue
+        try {
+            Files.writeString(Paths.get(".minigit/HEAD"), commitHash + "\n");
+            System.out.println("HEAD is now at " + commitHash);
+        } catch (IOException e) {
+            System.out.println("Error updating HEAD. " + e.getMessage());
+        }
+
     }
 }
