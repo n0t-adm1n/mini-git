@@ -154,7 +154,7 @@ public class GitObject {
             int i = getPayloadStartIndex(data);  //skips the null byte
 
             // Slice the array to keep only the actual payload (everything AFTER the null byte)
-            data = Arrays.copyOfRange(data, i+1, data.length);
+            data = Arrays.copyOfRange(data, i, data.length);
             return new String(data);
 
         } catch (IOException e) {
@@ -281,9 +281,15 @@ public class GitObject {
     }
 
 
-    public static void checkout(String commitHash) {
+    public static boolean checkout(String commitHash) {
         // get commit object
         String commitObject = catFile(commitHash);
+
+
+        if(commitObject == null || commitObject.isEmpty()) {
+            System.out.println("fatal error, commit object cannot be fount.");
+            return false;
+        }
 
         // read tree hash from commit object
         String[] strs = commitObject.split("\n");
@@ -295,19 +301,16 @@ public class GitObject {
             }
         }
 
+        if(treeHash == null) {
+            System.out.println("fatal error, no tree hash found inside the commit.");
+            return false;
+        }
 
         FileUtils.clearWorkingDirectory(Paths.get(""), FileUtils.getIgnoreSet());
 
         checkoutTree(treeHash, Paths.get(""));
 
-        // update the HEAD to point to checked out commit and prevent the detached HEAD issue
-        try {
-            Files.writeString(Paths.get(".minigit/HEAD"), commitHash + "\n");
-            System.out.println("HEAD is now at " + commitHash);
-        } catch (IOException e) {
-            System.out.println("Error updating HEAD. " + e.getMessage());
-        }
-
+        return true;
     }
 
     /**
