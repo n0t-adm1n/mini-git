@@ -53,15 +53,9 @@ public class Main {
                 break;
 
             case "log" :
-                String headHash = Repository.getCurrentHeadHash();
-
-                if(headHash != null) {
-                    log(headHash);
-                } else {
-                    System.out.println("No commit found!");
-                }
+                GitCommand logCmd = new LogCommand();
+                logCmd.execute(args);
                 break;
-
 
             case "update-ref" :
 
@@ -182,37 +176,7 @@ public class Main {
 
 
 
-    /**
-     * Replicates `git log`.
-     * Recursively reads commits starting from a given hash and traversing backwards through parents.
-     */
-    public static void log(String commitHash) {
-        String commitStr = catFile(commitHash);
 
-        String[] strs = commitStr.split("\n");
-        boolean isMessage = false;
-        String parentHash = null;
-        StringBuilder commitMessage = new StringBuilder();
-
-        // Parse the commit payload line by line
-        for(String line : strs) {
-            if(isMessage) {
-                commitMessage.append(line).append("\n");
-            } else if(line.startsWith("parent ")) {
-                parentHash = line.substring(7); // Extract the 40-char hash next to the "parent " string
-            } else if(line.isEmpty()) {
-                isMessage = true;  // The first empty line separates headers from the commit message
-            }
-        }
-
-        System.out.println("commit " + commitHash);
-        System.out.println("\n    " + commitMessage.toString().trim() + "\n");
-
-        // Follow the DAG backwards recursively
-        if(parentHash != null) {
-            log(parentHash);
-        }
-    }
 
 
 
