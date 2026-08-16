@@ -58,40 +58,13 @@ public class Main {
                 break;
 
             case "update-ref" :
-
-                if(args.length < 2) {
-                    System.out.println("Usage: update-ref <commit-hash>");
-                    break;
-                }
-
-                String commitHashToSave = args[1];
-
-                Repository.updateRef(commitHashToSave);
+                GitCommand updateRefCmd = new UpdateRefCommand();
+                updateRefCmd.execute(args);
                 break;
 
-
             case "commit" :
-                if(args.length < 3) {
-                    System.out.println("Usage: commit -m \"<commit-message>\"");
-                    break;
-                }
-
-                String commitMessage = args[2];
-
-                // snapshot of the directory
-                String currentTreeHash = writeTree(FileUtils.getIgnoreSet(), Paths.get(""));
-
-                // get parents hash stored in HEAD file
-                String parentCommitHash = Repository.getCurrentHeadHash();
-
-                // create the commit object and get its hash
-                String newCommitHash = commitTree(currentTreeHash, commitMessage, parentCommitHash);
-
-                // update branch pointers
-                Repository.updateRef(newCommitHash);
-
-                System.out.println("commit created. " + newCommitHash);
-
+                GitCommand commitCmd = new CommitCommand();
+                commitCmd.execute(args);
                 break;
 
             case "checkout" :
