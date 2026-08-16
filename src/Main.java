@@ -1,4 +1,5 @@
 import commands.GitCommand;
+import commands.HashObjectCommand;
 import commands.InitCommand;
 import core.GitObject;
 import core.Repository;
@@ -34,34 +35,8 @@ public class Main {
                 break;
 
             case "hash-object" :
-                boolean writeFlag = false;
-                String filename = "";
-
-                // Parse arguments for the -w flag and filename
-                for(int i = 1; i < args.length; i++) {
-                    if(args[i].equals("-w")) {
-                        writeFlag = true;
-                    } else {
-                        filename = args[i];
-                    }
-                }
-
-                if(filename.isEmpty()) {
-                    System.out.println("please enter a file name");
-                    break;
-                }
-
-                if(writeFlag) {
-                    writeToDisk(filename);
-                } else {
-                    byte[] blob = GitObject.createBlob(filename);
-                    try {
-                        String hexString = HashUtils.generateHexString(blob);
-                        System.out.println(hexString);
-                    } catch(NullPointerException e) {
-                        System.out.println("cannot generate hex string. " + e.getMessage());
-                    }
-                }
+                GitCommand hashObjectCmd = new HashObjectCommand();
+                hashObjectCmd.execute(args);
                 break;
 
             case "cat-file" :
@@ -195,42 +170,13 @@ public class Main {
 
 
 
-    /**
-     * High-level wrapper to create a blob, hash it, and save it to the disk.
-     */
-    public static void writeToDisk(String filename) {
-        byte[] blob = GitObject.createBlob(filename);
-        String hexString = HashUtils.generateHexString(blob);
-        saveGitObjectToDisk(hexString, blob);
-    }
 
 
 
 
 
-    /**
-     * Compresses and saves a Git object to the `.minigit/objects` directory.
-     * Git splits the 40-character SHA-1 hash into two parts to optimize file system lookups:
-     * - The first 2 characters become the directory name.
-     * - The remaining 38 characters become the file name.
-     */
-    public static void saveGitObjectToDisk(String hexString, byte[] rawData) {
-        String folderName = hexString.substring(0, 2);
-        String fileName   = hexString.substring(2, 40);
-        Path objectPath = Paths.get(".minigit", "objects", folderName, fileName);
 
-        try {
-            Files.createDirectories(objectPath.getParent());
 
-            // DeflaterOutputStream applies the zlib compression required by Git
-            try(FileOutputStream fos = new FileOutputStream(objectPath.toFile());
-                DeflaterOutputStream dos = new DeflaterOutputStream(fos)) {
-                dos.write(rawData);
-            }
-        } catch (IOException e) {
-            System.out.println("Error saving to disk. " + e.getMessage());
-        }
-    }
 
     /**
      * Replicates `git cat-file -p`.
@@ -328,7 +274,7 @@ public class Main {
             }
 
             String treeHex = HashUtils.generateHexString(finalTreeObject);
-            saveGitObjectToDisk(treeHex, finalTreeObject);
+            GitObject.saveGitObjectToDisk(treeHex, finalTreeObject);
 
             return treeHex; // Return hash to the parent directory for recursive building
         } catch (IOException e) {
@@ -385,7 +331,7 @@ public class Main {
         }
 
         String commitHex = HashUtils.generateHexString(combinedCommitBytes);
-        saveGitObjectToDisk(commitHex, combinedCommitBytes);
+        GitObject.saveGitObjectToDisk(commitHex, combinedCommitBytes);
 
         return commitHex;
     }

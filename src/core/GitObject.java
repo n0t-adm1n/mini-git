@@ -3,6 +3,7 @@ package core;
 import utils.HashUtils;
 
 import java.io.ByteArrayOutputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -10,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.zip.DeflaterOutputStream;
 
 public class GitObject {
     /**
@@ -107,5 +109,29 @@ public class GitObject {
             System.out.println("Error combining tree entries. " + e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * Compresses and saves a Git object to the `.minigit/objects` directory.
+     * Git splits the 40-character SHA-1 hash into two parts to optimize file system lookups:
+     * - The first 2 characters become the directory name.
+     * - The remaining 38 characters become the file name.
+     */
+    public static void saveGitObjectToDisk(String hexString, byte[] rawData) {
+        String folderName = hexString.substring(0, 2);
+        String fileName   = hexString.substring(2, 40);
+        Path objectPath = Paths.get(".minigit", "objects", folderName, fileName);
+
+        try {
+            Files.createDirectories(objectPath.getParent());
+
+            // DeflaterOutputStream applies the zlib compression required by Git
+            try(FileOutputStream fos = new FileOutputStream(objectPath.toFile());
+                DeflaterOutputStream dos = new DeflaterOutputStream(fos)) {
+                dos.write(rawData);
+            }
+        } catch (IOException e) {
+            System.out.println("Error saving to disk. " + e.getMessage());
+        }
     }
 }
