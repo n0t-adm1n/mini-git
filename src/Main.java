@@ -1,3 +1,6 @@
+import utils.FileUtils;
+import utils.HashUtils;
+
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -48,7 +51,7 @@ public class Main {
                 } else {
                     byte[] blob = createBlob(filename);
                     try {
-                        String hexString = generateHexString(blob);
+                        String hexString = HashUtils.generateHexString(blob);
                         System.out.println(hexString);
                     } catch(NullPointerException e) {
                         System.out.println("cannot generate hex string. " + e.getMessage());
@@ -82,7 +85,7 @@ public class Main {
                 break;
 
             case "write-tree" :
-                Set<String> ignoreSet = getIgnoreSet();
+                Set<String> ignoreSet = FileUtils.getIgnoreSet();
                 Path root = Paths.get("");
                 String treeHash = writeTree(ignoreSet, root);
                 System.out.println(treeHash); // Output the final hash exactly like real Git
@@ -150,7 +153,7 @@ public class Main {
                 String commitMessage = args[2];
 
                 // snapshot of the directory
-                String currentTreeHash = writeTree(getIgnoreSet(), Paths.get(""));
+                String currentTreeHash = writeTree(FileUtils.getIgnoreSet(), Paths.get(""));
 
                 // get parents hash stored in HEAD file
                 String parentCommitHash = getCurrentHeadHash();
@@ -236,7 +239,7 @@ public class Main {
      */
     public static void writeToDisk(String filename) {
         byte[] blob = createBlob(filename);
-        String hexString = generateHexString(blob);
+        String hexString = HashUtils.generateHexString(blob);
         saveGitObjectToDisk(hexString, blob);
     }
 
@@ -269,24 +272,7 @@ public class Main {
         return blob;
     }
 
-    /**
-     * Generates a 40-character SHA-1 hash (checksum) for any given byte array.
-     * This hash acts as the unique ID and filename for the object in Git's key-value datastore.
-     */
-    public static String generateHexString(byte[] blob) {
-        if(blob == null) {
-            throw new NullPointerException("blob is null. error creating blob");
-        }
-        String hexString = null;
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-1");
-            byte[] hashedBlob = digest.digest(blob);
-            hexString = HexFormat.of().formatHex(hashedBlob);
-        } catch (NoSuchAlgorithmException e) {
-            System.out.println(e.getMessage());
-        }
-        return hexString;
-    }
+
 
     /**
      * Compresses and saves a Git object to the `.minigit/objects` directory.
@@ -355,13 +341,8 @@ public class Main {
         String filename = hash.substring(2);
         Path objectPath = Paths.get(".minigit", "objects", dirname, filename);
 
-        try (
-                FileInputStream fis = new FileInputStream(objectPath.toFile());
-                InflaterInputStream iis = new InflaterInputStream(fis)
-        ) {
-            // Return the entire decompressed file (including the header!) as raw bytes
-            return iis.readAllBytes();
-
+        try {
+            return FileUtils.decompressZlibFile(objectPath);
         } catch (IOException e) {
             System.out.println("error while reading raw object bytes: " + e.getMessage());
         }
@@ -412,7 +393,7 @@ public class Main {
                 finalTreeObject = baos.toByteArray();
             }
 
-            String treeHex = generateHexString(finalTreeObject);
+            String treeHex = HashUtils.generateHexString(finalTreeObject);
             saveGitObjectToDisk(treeHex, finalTreeObject);
 
             return treeHex; // Return hash to the parent directory for recursive building
@@ -432,7 +413,7 @@ public class Main {
         String header = mode + filename + '\0';
 
         byte[] blob = createBlob(p.toString());
-        String blobHash = generateHexString(blob);
+        String blobHash = HashUtils.generateHexString(blob);
         saveGitObjectToDisk(blobHash, blob);
 
         // Git trees store the object hash as 20 raw binary bytes, NOT a 40-character text string
@@ -483,30 +464,7 @@ public class Main {
         return null;
     }
 
-    /**
-     * Reads a custom `.mini-gitignore` file to avoid tracking unneeded files/folders.
-     */
-    public static Set<String> getIgnoreSet() {
-        Set<String> set = new HashSet<>();
-        Path ignoreFile = Paths.get(".mini-gitignore");
 
-        if(!Files.exists(ignoreFile)) throw new RuntimeException("Create the .mini-gitignore file");
-
-        try( Stream<String> dirAndFilesToIgnoreStream = Files.lines(ignoreFile);) {
-            for(String s : dirAndFilesToIgnoreStream.toList()) {
-                String st = s.trim();
-
-                if(st.isEmpty()) continue;
-
-                // Safely strip trailing slashes so directory names match strictly (e.g. ".idea" not ".idea/")
-                if(st.endsWith("/")) st = st.substring(0, st.length()-1);
-                set.add(st);
-            }
-        } catch (IOException e) {
-            System.out.println("cannot read .mini-gitignore file " + e.getMessage());
-        }
-        return set;
-    }
 
     /**
      * Replicates `git commit-tree`.
@@ -529,7 +487,7 @@ public class Main {
             System.out.println("Error creating header for commit. " + e.getMessage());
         }
 
-        String commitHex = generateHexString(combinedCommitBytes);
+        String commitHex = HashUtils.generateHexString(combinedCommitBytes);
         saveGitObjectToDisk(commitHex, combinedCommitBytes);
 
         return commitHex;
@@ -656,7 +614,7 @@ public class Main {
         }
 
 
-        clearWorkingDirectory(Paths.get(""), getIgnoreSet());
+        FileUtils.clearWorkingDirectory(Paths.get(""), FileUtils.getIgnoreSet());
 
         checkoutTree(treeHash, Paths.get(""));
 
@@ -738,35 +696,5 @@ public class Main {
 
 
         }
-    }
-
-    public static void clearWorkingDirectory(Path path, Set<String> ignoreSet) {
-
-        try(Stream<Path> files = Files.list(path)) {
-            List<Path> pathList = files.toList();
-
-            for(Path p : pathList) {
-                String filename = p.getFileName().toString();
-
-                if(ignoreSet.contains(filename)) {
-                    continue;
-                }
-
-                if(Files.isDirectory(p)) {
-                    // recursively remove everything inside the directory
-                    clearWorkingDirectory(p, ignoreSet);
-                    Files.delete(p);
-                } else if(Files.isRegularFile(p)) {
-                    Files.delete(p);
-                } else {
-                    System.out.println(filename + " is something else");
-                }
-
-
-            }
-        } catch (IOException e) {
-            System.out.println("error occurred while clearing directory. " + e.getMessage());
-        }
-
     }
 }
