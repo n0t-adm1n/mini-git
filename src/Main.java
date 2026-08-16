@@ -1,3 +1,4 @@
+import commands.CatFileCommand;
 import commands.GitCommand;
 import commands.HashObjectCommand;
 import commands.InitCommand;
@@ -40,28 +41,8 @@ public class Main {
                 break;
 
             case "cat-file" :
-                boolean printFlag = false;
-                String hash = "";
-
-                // Parse arguments for the -p (print) flag and the object hash
-                for(int i = 1; i < args.length; i++) {
-                    if(args[i].equals("-p")) {
-                        printFlag = true;
-                    } else {
-                        hash = args[i];
-                    }
-                }
-
-                if(hash.isEmpty()) {
-                    System.out.println("Please provide a hash to read");
-                    break;
-                }
-
-                if(printFlag) {
-                    System.out.println(catFile(hash));
-                } else {
-                    System.out.println("provide the -p flag");
-                }
+                GitCommand catFileCmd = new CatFileCommand();
+                catFileCmd.execute(args);
                 break;
 
             case "write-tree" :
@@ -178,38 +159,7 @@ public class Main {
 
 
 
-    /**
-     * Replicates `git cat-file -p`.
-     * Locates a compressed object by its hash, decompresses it on the fly,
-     * strips away the Git header, and returns the raw file contents as a String.
-     */
-    public static String catFile(String hash) {
-        String dirname  = hash.substring(0,2);
-        String filename = hash.substring(2);
-        Path objectPath = Paths.get(".minigit", "objects", dirname, filename);
 
-        try(
-                FileInputStream fis = new FileInputStream(objectPath.toFile());
-                InflaterInputStream iis = new InflaterInputStream(fis); // Decompresses zlib data
-        ) {
-            byte[] data = iis.readAllBytes();
-            int i = 0;
-
-            // Iterate through the bytes until we find the null byte (0) that ends the header
-            while(data[i] != 0) {
-                i++;
-            }
-
-            // Slice the array to keep only the actual payload (everything AFTER the null byte)
-            data = Arrays.copyOfRange(data, i+1, data.length);
-            return new String(data);
-
-        } catch (IOException e) {
-            System.out.println("error while reading file " + e.getMessage());
-        }
-
-        return null;
-    }
 
 
     /**
