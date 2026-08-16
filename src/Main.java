@@ -1,3 +1,5 @@
+import commands.GitCommand;
+import commands.InitCommand;
 import core.GitObject;
 import core.Repository;
 import utils.FileUtils;
@@ -27,7 +29,8 @@ public class Main {
         // Basic CLI Router to handle different Git commands
         switch (command) {
             case "init" :
-                Repository.initializeRepository();
+                GitCommand initCmd = new InitCommand();
+                initCmd.execute(args);
                 break;
 
             case "hash-object" :
