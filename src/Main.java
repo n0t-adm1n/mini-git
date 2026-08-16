@@ -59,6 +59,10 @@ public class Main {
                 checkoutCmd.execute(args);
                 break;
 
+            case "branch" :
+                GitCommand branchCmd = new BranchCommand();
+                branchCmd.execute(args);
+                break;
 
             default:
                 System.out.println(command + " is not a valid command");
