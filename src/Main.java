@@ -1,3 +1,5 @@
+import core.GitObject;
+import core.Repository;
 import utils.FileUtils;
 import utils.HashUtils;
 
@@ -25,7 +27,7 @@ public class Main {
         // Basic CLI Router to handle different Git commands
         switch (command) {
             case "init" :
-                initializeRepository();
+                Repository.initializeRepository();
                 break;
 
             case "hash-object" :
@@ -49,7 +51,7 @@ public class Main {
                 if(writeFlag) {
                     writeToDisk(filename);
                 } else {
-                    byte[] blob = createBlob(filename);
+                    byte[] blob = GitObject.createBlob(filename);
                     try {
                         String hexString = HashUtils.generateHexString(blob);
                         System.out.println(hexString);
@@ -121,7 +123,7 @@ public class Main {
                 break;
 
             case "log" :
-                String headHash = getCurrentHeadHash();
+                String headHash = Repository.getCurrentHeadHash();
 
                 if(headHash != null) {
                     log(headHash);
@@ -140,7 +142,7 @@ public class Main {
 
                 String commitHashToSave = args[1];
 
-                updateRef(commitHashToSave);
+                Repository.updateRef(commitHashToSave);
                 break;
 
 
@@ -156,13 +158,13 @@ public class Main {
                 String currentTreeHash = writeTree(FileUtils.getIgnoreSet(), Paths.get(""));
 
                 // get parents hash stored in HEAD file
-                String parentCommitHash = getCurrentHeadHash();
+                String parentCommitHash = Repository.getCurrentHeadHash();
 
                 // create the commit object and get its hash
                 String newCommitHash = commitTree(currentTreeHash, commitMessage, parentCommitHash);
 
                 // update branch pointers
-                updateRef(newCommitHash);
+                Repository.updateRef(newCommitHash);
 
                 System.out.println("commit created. " + newCommitHash);
 
@@ -188,89 +190,18 @@ public class Main {
         }
     }
 
-    /**
-     * Replicates `git init`.
-     * Creates the hidden directory structure required for a Git database.
-     * Also initializes the HEAD file which acts as a pointer to the current active branch.
-     */
-    public static void initializeRepository() {
-        Path path = Paths.get(".minigit");
-        List<String> subDirectoriesPath = List.of(
-                ".minigit/objects",
-                ".minigit/refs"
-        );
-        Path headPath = Paths.get(".minigit/HEAD");
-        String headContent = "ref: refs/heads/main\n";
 
-        Path ignorePath = Paths.get(".mini-gitignore");
-        String defaultIgnoreContent = ".minigit\n.git\n.idea\nout\ntarget\n";
-
-        try {
-
-            if(Files.exists(path)) {
-                System.out.println("Repository is already initialized.");
-                return;
-            }
-
-            Files.createDirectory(path);
-
-            for(String p : subDirectoriesPath) {
-                Path subPath = Paths.get(p);
-                Files.createDirectory(subPath);
-            }
-
-            Files.writeString(headPath, headContent);
-
-            // create the .mini-gitignore file if it doesn't exists already
-            if(!Files.exists(ignorePath)) {
-                Files.writeString(ignorePath, defaultIgnoreContent);
-            }
-
-
-            System.out.println("Initialized project");
-
-        } catch (IOException e) {
-            System.out.println("Failed to initialize project\n" + e.getMessage());
-        }
-    }
 
     /**
      * High-level wrapper to create a blob, hash it, and save it to the disk.
      */
     public static void writeToDisk(String filename) {
-        byte[] blob = createBlob(filename);
+        byte[] blob = GitObject.createBlob(filename);
         String hexString = HashUtils.generateHexString(blob);
         saveGitObjectToDisk(hexString, blob);
     }
 
-    /**
-     * Reads a file and prepends the strict Git blob header.
-     * Git format: "blob <size_in_bytes>\0<original_file_contents>"
-     * The null byte ('\0') is critical as it separates the metadata header from the actual payload.
-     *
-     * @param filename The path to the file to be converted into a blob.
-     * @return A byte array containing the header and file contents combined.
-     */
-    public static byte[] createBlob(String filename) {
-        Path filePath = Paths.get(filename);
-        byte[] blob = null;
-        try {
-            byte[] byteFile = Files.readAllBytes(filePath);
-            String filesize = String.valueOf(Files.size(filePath));
 
-            String header = "blob " + filesize + '\0';
-            byte[] headerBytes = header.getBytes(StandardCharsets.UTF_8);
-
-            // Create a new array large enough to hold both the header and the file payload
-            blob = new byte[headerBytes.length + byteFile.length];
-
-            System.arraycopy(headerBytes, 0, blob, 0, headerBytes.length);
-            System.arraycopy(byteFile, 0, blob, headerBytes.length, byteFile.length);
-        } catch (IOException e) {
-            System.out.println("unable to read file " + e.getMessage());
-        }
-        return blob;
-    }
 
 
 
@@ -368,7 +299,7 @@ public class Main {
                 if(!ignoreSet.contains(filename) && !filename.equals(".minigit") && !filename.equals(".git") ) {
 
                     if(Files.isRegularFile(p)) {
-                        treeEntries.add(getFileHexBytes(p));
+                        treeEntries.add(GitObject.getFileHexBytes(p));
                     } else if(Files.isDirectory(p)) {
                         // Recursively process subdirectories
                         String subDirHash = writeTree(ignoreSet, p);
@@ -381,7 +312,7 @@ public class Main {
                 }
             }
 
-            byte[] combinedTreeEntries = combineTreeEntries(treeEntries);
+            byte[] combinedTreeEntries = GitObject.combineTreeEntries(treeEntries);
 
             // Trees require a header before hashing, just like Blobs
             String treeHeader = "tree " + combinedTreeEntries.length + "\0";
@@ -403,31 +334,7 @@ public class Main {
         return null;
     }
 
-    /**
-     * Formats a single file entry to be inserted into a Tree object.
-     * Git Tree Entry Format: "[mode] [filename]\0[20-byte binary hash]"
-     */
-    public static byte[] getFileHexBytes(Path p) {
-        String mode = "100644 "; // Standard file permissions mode in Git
-        String filename = p.getFileName().toString();
-        String header = mode + filename + '\0';
 
-        byte[] blob = createBlob(p.toString());
-        String blobHash = HashUtils.generateHexString(blob);
-        saveGitObjectToDisk(blobHash, blob);
-
-        // Git trees store the object hash as 20 raw binary bytes, NOT a 40-character text string
-        byte[] fileHashByte = HexFormat.of().parseHex(blobHash);
-
-        try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            baos.write(header.getBytes());
-            baos.write(fileHashByte);
-            return baos.toByteArray();
-        } catch(IOException e) {
-            System.out.println("Error combining header with blob. " + e.getMessage());
-        }
-        return null;
-    }
 
     /**
      * Formats a single directory entry to be inserted into a parent Tree object.
@@ -449,20 +356,7 @@ public class Main {
         return null;
     }
 
-    /**
-     * Safely combines a list of binary Tree entries into a single continuous byte stream.
-     */
-    public static byte[] combineTreeEntries(List<byte[]> treeEntries) {
-        try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            for(byte[] b : treeEntries) {
-                baos.write(b);
-            }
-            return baos.toByteArray();
-        } catch (IOException e) {
-            System.out.println("Error combining tree entries. " + e.getMessage());
-        }
-        return null;
-    }
+
 
 
 
@@ -471,7 +365,7 @@ public class Main {
      * Wraps a Tree hash into a Commit object, linking it to a parent commit to form the repository history.
      */
     public static String commitTree(String treeHash, String message, String parentHash) {
-        String commitText = getCommitText(treeHash, message, parentHash);
+        String commitText = GitObject.getCommitText(treeHash, message, parentHash);
         byte[] commitTextBytes = commitText.getBytes(StandardCharsets.UTF_8);
 
         // Commits also require a header before hashing
@@ -493,29 +387,7 @@ public class Main {
         return commitHex;
     }
 
-    /**
-     * Generates the plain text payload for a Commit object following strict Git formatting rules.
-     */
-    public static String getCommitText(String treeHash, String message, String parentHash) {
-        long currentTime = System.currentTimeMillis() / 1000;
 
-        StringBuilder sb = new StringBuilder();
-
-        sb.append("tree ").append(treeHash).append("\n");
-        if(parentHash != null) {
-            sb.append("parent ").append(parentHash).append("\n");
-        }
-
-        // Git strictly requires emails to be enclosed in angle brackets < >
-        sb.append("author User <user@example.com> ").append(currentTime).append(" +0000\n");
-        sb.append("committer User <user@example.com> ").append(currentTime).append(" +0000\n");
-        sb.append("\n");
-
-        // Commit messages should end with a trailing newline
-        sb.append(message).append("\n");
-
-        return sb.toString();
-    }
 
     /**
      * Replicates `git log`.
@@ -549,55 +421,9 @@ public class Main {
         }
     }
 
-    public static void updateRef(String commitHash) {
-        Path path = Paths.get(".minigit/HEAD");
 
-        try {
-            if(!Files.exists(path)) return;
 
-            String ref = Files.readString(path).trim();
 
-            if (ref.startsWith("ref: ")) {
-                // We are on a branch! Extract the branch path and update it.
-                String branchPathStr = ref.substring(5);
-                Path branchPath = Paths.get(".minigit", branchPathStr);
-
-                Files.createDirectories(branchPath.getParent());
-                Files.writeString(branchPath, commitHash + "\n");
-            } else {
-                // We are in a detached HEAD state! Update the HEAD file directly.
-                Files.writeString(path, commitHash + "\n");
-            }
-        } catch (IOException e) {
-            System.out.println("Error updating ref. " + e.getMessage());
-        }
-    }
-
-    public static String getCurrentHeadHash() {
-        String headHash = null;
-        Path headPath = Paths.get(".minigit/HEAD");
-        try {
-            // if no head file exists
-            if(!Files.exists(headPath)) return null;
-
-            String ref = Files.readString(headPath).trim();  // remove /n
-
-            if(ref.startsWith("ref: ")) {
-                ref = ref.substring(5);
-
-                Path branchPath = Paths.get(".minigit/" + ref);
-                if(Files.exists(branchPath))
-                    headHash = Files.readString(branchPath).trim(); // remove /n
-            } else {
-                // HEAD file doesn't exist we are in detached state
-                headHash = ref;
-            }
-        } catch (IOException e) {
-            System.out.println("error reading head ref. " + e.getMessage());
-        }
-
-        return headHash;
-    }
 
     public static void checkout(String commitHash) {
         // get commit object
