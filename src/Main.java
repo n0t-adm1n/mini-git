@@ -1,7 +1,4 @@
-import commands.CatFileCommand;
-import commands.GitCommand;
-import commands.HashObjectCommand;
-import commands.InitCommand;
+import commands.*;
 import core.GitObject;
 import core.Repository;
 import utils.FileUtils;
@@ -46,10 +43,8 @@ public class Main {
                 break;
 
             case "write-tree" :
-                Set<String> ignoreSet = FileUtils.getIgnoreSet();
-                Path root = Paths.get("");
-                String treeHash = writeTree(ignoreSet, root);
-                System.out.println(treeHash); // Output the final hash exactly like real Git
+                GitCommand writeTreeCmd = new WriteTreeCommand();
+                writeTreeCmd.execute(args);
                 break;
 
             case "commit-tree" :
@@ -179,59 +174,7 @@ public class Main {
         return null;
     }
 
-    /**
-     * Replicates `git write-tree`.
-     * Recursively traverses the working directory to build Tree objects.
-     * A Tree object in Git acts like a directory, mapping filenames to Blob hashes or other Tree hashes.
-     */
-    public static String writeTree(Set<String> ignoreSet, Path path) {
-        List<byte[]> treeEntries = new ArrayList<>();
 
-        try (Stream<Path> stream = Files.list(path)) {
-            // Git STRICTLY requires tree entries to be sorted alphabetically by filename
-            List<Path> paths = stream.sorted().toList();
-
-            for(Path p : paths) {
-                String filename = p.getFileName().toString();
-
-                // Prevent infinite loops by ignoring the .minigit/.git databases and the ignore list
-                if(!ignoreSet.contains(filename) && !filename.equals(".minigit") && !filename.equals(".git") ) {
-
-                    if(Files.isRegularFile(p)) {
-                        treeEntries.add(GitObject.getFileHexBytes(p));
-                    } else if(Files.isDirectory(p)) {
-                        // Recursively process subdirectories
-                        String subDirHash = writeTree(ignoreSet, p);
-                        if(subDirHash != null) {
-                            treeEntries.add(getDirectoryHexBytes(p, subDirHash));
-                        }
-                    } else {
-                        System.out.println(p + " is something else");
-                    }
-                }
-            }
-
-            byte[] combinedTreeEntries = GitObject.combineTreeEntries(treeEntries);
-
-            // Trees require a header before hashing, just like Blobs
-            String treeHeader = "tree " + combinedTreeEntries.length + "\0";
-
-            byte[] finalTreeObject;
-            try(ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-                baos.write(treeHeader.getBytes(StandardCharsets.UTF_8));
-                baos.write(combinedTreeEntries);
-                finalTreeObject = baos.toByteArray();
-            }
-
-            String treeHex = HashUtils.generateHexString(finalTreeObject);
-            GitObject.saveGitObjectToDisk(treeHex, finalTreeObject);
-
-            return treeHex; // Return hash to the parent directory for recursive building
-        } catch (IOException e) {
-            System.out.println("Error occurred while writing tree: " + e.getMessage());
-        }
-        return null;
-    }
 
 
 
