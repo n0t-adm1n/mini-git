@@ -64,6 +64,11 @@ public class Main {
                 branchCmd.execute(args);
                 break;
 
+            case "status" :
+                GitCommand statusCmd = new StatusCommand();
+                statusCmd.execute(args);
+                break;
+
             default:
                 System.out.println(command + " is not a valid command");
                 break;
